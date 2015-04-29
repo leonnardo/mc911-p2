@@ -61,6 +61,7 @@ import llvmast.LlvmRegister;
 import llvmast.LlvmRet;
 import llvmast.LlvmStore;
 import llvmast.LlvmStructure;
+import llvmast.LlvmTimes;
 import llvmast.LlvmType;
 import llvmast.LlvmValue;
 import semant.Env;
@@ -176,14 +177,6 @@ public class Codegen extends VisitorAdapter{
 		return null;
 	}
 	
-	public LlvmValue visit(Plus n){
-		LlvmValue v1 = n.lhs.accept(this);
-		LlvmValue v2 = n.rhs.accept(this);
-		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
-		assembler.add(new LlvmPlus(lhs,LlvmPrimitiveType.I32,v1,v2));
-		return lhs;
-	}
-	
 	public LlvmValue visit(Print n){
 
 		LlvmValue v =  n.exp.accept(this);
@@ -220,6 +213,16 @@ public class Codegen extends VisitorAdapter{
 	};
 	
 	// Todos os visit's que devem ser implementados	
+	
+	// operações matemáticcas
+	public LlvmValue visit(Plus n){
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmPlus(lhs,LlvmPrimitiveType.I32,v1,v2));
+		return lhs;
+	}
+	
 	public LlvmValue visit(Minus n) {
 		LlvmValue v1 = n.lhs.accept(this);
 		LlvmValue v2 = n.rhs.accept(this);
@@ -228,7 +231,14 @@ public class Codegen extends VisitorAdapter{
 		return lhs;
 	}
 	
-	public LlvmValue visit(ClassDeclSimple n){return null;}
+	public LlvmValue visit(Times n) {
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmTimes(lhs, LlvmPrimitiveType.I32, v1, v2));
+		return lhs;
+	}
+
 	public LlvmValue visit(ClassDeclExtends n){return null;}
 	public LlvmValue visit(VarDecl n){return null;}
 	public LlvmValue visit(MethodDecl n){return null;}
@@ -245,7 +255,6 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(And n){return null;}
 	public LlvmValue visit(LessThan n){return null;}
 	public LlvmValue visit(Equal n){return null;}
-	public LlvmValue visit(Times n){return null;}
 	public LlvmValue visit(ArrayLookup n){return null;}
 	public LlvmValue visit(ArrayLength n){return null;}
 	public LlvmValue visit(Call n){return null;}
@@ -290,17 +299,14 @@ public LlvmValue visit(MainClass n){
 }
 
 public LlvmValue visit(ClassDeclSimple n){
-	List<LlvmType> typeList = null;
-	// Constroi TypeList com os tipos das variáveis da Classe (vai formar a Struct da classe)
+	// percorre a lista de variáveis para ver os tipos 
+	List<LlvmType> typeList = new LinkedList<LlvmType>();
+	for (util.List<VarDecl> v = n.varList; v !=null; v = v.tail) 
+		typeList.add(v.head.accept(this).type);
 	
-	List<LlvmValue> varList = null;
-	// Constroi VarList com as Variáveis da Classe
-
-	classes.put(n.name.s, new ClassNode(n.name.s, 
-										new LlvmStructure(typeList), 
-										varList)
-      			);
-    	// Percorre n.methodList visitando cada método
+	// tem que usar essa symtab mesmo?
+	//classes.put(n.name.s, new ClassNode(n.name.s, new LlvmStructure(typeList), varList));
+    // Percorre n.methodList visitando cada método
 	return null;
 }
 
