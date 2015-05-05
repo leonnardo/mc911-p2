@@ -35,6 +35,7 @@ como guia no desenvolvimento deste projeto.
 ****************************************************/
 package llvm;
 
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,7 @@ import java.util.Map;
 import llvmast.LlvmAlloca;
 import llvmast.LlvmArray;
 import llvmast.LlvmCall;
+import llvmast.LlvmClassType;
 import llvmast.LlvmCloseDefinition;
 import llvmast.LlvmConstantDeclaration;
 import llvmast.LlvmDefine;
@@ -109,11 +111,12 @@ public class Codegen extends VisitorAdapter{
 
   	private SymTab symTab;
 	private ClassNode classEnv; 	// Aponta para a classe atualmente em uso em symTab
-	private MethodNode methodEnv; 	// Aponta para a metodo atualmente em uso em symTab
+	//private MethodNode methodEnv; 	// Aponta para a metodo atualmente em uso em symTab
 
 
 	public Codegen(){
 		assembler = new LinkedList<LlvmInstruction>();
+		symTab = new SymTab();
 	}
 
 	// Método de entrada do Codegen
@@ -122,7 +125,7 @@ public class Codegen extends VisitorAdapter{
 		
 		// Preenchendo a Tabela de Símbolos
 		// Quem quiser usar 'env', apenas comente essa linha
-		// codeGenerator.symTab.FillTabSymbol(p);
+		codeGenerator.symTab.FillTabSymbol(p);
 		
 		// Formato da String para o System.out.printlnijava "%d\n"
 		codeGenerator.assembler.add(new LlvmConstantDeclaration("@.formatting.string", "private constant [4 x i8] c\"%d\\0A\\00\""));	
@@ -238,6 +241,18 @@ public class Codegen extends VisitorAdapter{
 		assembler.add(new LlvmTimes(lhs, LlvmPrimitiveType.I32, v1, v2));
 		return lhs;
 	}
+	
+	public LlvmValue visit(ClassDeclSimple n){
+		classEnv = symTab.classes.get(n.name.s);
+		assembler.add(classEnv.getClassDeclaration());
+		
+		// Percorre n.methodList visitando cada método
+		for (util.List<MethodDecl> methodList = n.methodList; methodList != null; methodList = methodList.tail) {
+			methodList.head.accept(this);
+		}
+			
+		return null;
+	}
 
 	public LlvmValue visit(ClassDeclExtends n){return null;}
 	public LlvmValue visit(VarDecl n){return null;}
@@ -294,6 +309,7 @@ public LlvmValue visit(Program n){
 }
 
 public LlvmValue visit(MainClass n){
+	classes = new HashMap<String, ClassNode>();
 	classes.put(n.className.s, new ClassNode(n.className.s, null, null));
 	return null;
 }
@@ -301,27 +317,80 @@ public LlvmValue visit(MainClass n){
 public LlvmValue visit(ClassDeclSimple n){
 	// percorre a lista de variáveis para ver os tipos 
 	List<LlvmType> typeList = new LinkedList<LlvmType>();
-	for (util.List<VarDecl> v = n.varList; v !=null; v = v.tail) 
-		typeList.add(v.head.accept(this).type);
+	List<LlvmValue> varList = new LinkedList<LlvmValue>();
+	LlvmValue val;
+	for (util.List<VarDecl> v = n.varList; v !=null; v = v.tail) { 
+		val = v.head.accept(this);
+		typeList.add(val.type);
+		varList.add(val);
+	}
 	
-	// tem que usar essa symtab mesmo?
-	//classes.put(n.name.s, new ClassNode(n.name.s, new LlvmStructure(typeList), varList));
-    // Percorre n.methodList visitando cada método
+	classEnv = new ClassNode(n.name.s, new LlvmStructure(typeList), varList);
+	classes.put(n.name.s, classEnv);
+	
+	// Percorre n.methodList visitando cada método
+	for (util.List<MethodDecl> methodList = n.methodList; methodList != null; methodList = methodList.tail) {
+		methodList.head.accept(this);
+	}
+		
 	return null;
 }
 
 	public LlvmValue visit(ClassDeclExtends n){return null;}
-	public LlvmValue visit(VarDecl n){return null;}
+	public LlvmValue visit(VarDecl n){
+		LlvmValue value = n.type.accept(this);
+		LlvmNamedValue v = new LlvmNamedValue("%"+n.name.s, value.type);
+		return v;
+	}
 	public LlvmValue visit(Formal n){return null;}
 	public LlvmValue visit(MethodDecl n){return null;}
 	public LlvmValue visit(IdentifierType n){return null;}
-	public LlvmValue visit(IntArrayType n){return null;}
-	public LlvmValue visit(BooleanType n){return null;}
-	public LlvmValue visit(IntegerType n){return null;}
+	public LlvmValue visit(IntArrayType n){
+		return new LlvmNamedValue("int[]", new LlvmPointer(LlvmPrimitiveType.I32));
+	}
+	public LlvmValue visit(BooleanType n){
+		return new LlvmNamedValue("boolean", LlvmPrimitiveType.I1);
+	}
+	public LlvmValue visit(IntegerType n){
+		return new LlvmNamedValue("int", LlvmPrimitiveType.I32);
+	}
 }
 
 class ClassNode extends LlvmType {
-	ClassNode (String nameClass, LlvmStructure classType, List<LlvmValue> varList){
+	private String name;
+	private LlvmStructure structure;
+	public List<LlvmValue> varList;
+	public List<MethodNode> methodList;
+	public Map<String, MethodNode> methods;
+	
+	// constructor
+	ClassNode (String nameClass, LlvmStructure classType, List<LlvmValue> varList) {
+		this.name = nameClass;
+		this.structure = classType;
+		this.varList = varList;
+		this.methodList = new LinkedList<MethodNode>();
+		this.methods = new HashMap<String, MethodNode>();
+	}
+	
+	// getters 
+	public LlvmClassType getClassType() {
+		return new LlvmClassType(this.name);
+	}
+	
+	public LlvmNamedValue getClassPointer() {
+		return new LlvmNamedValue("%this", new LlvmPointer(getClassType()));
+	}
+	
+	public LlvmStructure getStructure() {
+		return structure;
+	}
+	
+	public LlvmInstruction getClassDeclaration() {
+		return new LlvmInstruction() {
+			public String toString() {
+				return getClassType() + " = type" + getStructure();
+			}
+		};
 	}
 }
 
