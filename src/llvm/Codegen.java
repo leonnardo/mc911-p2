@@ -98,6 +98,7 @@ import syntaxtree.Not;
 import syntaxtree.Plus;
 import syntaxtree.Print;
 import syntaxtree.Program;
+import syntaxtree.Statement;
 import syntaxtree.This;
 import syntaxtree.Times;
 import syntaxtree.True;
@@ -111,7 +112,7 @@ public class Codegen extends VisitorAdapter{
 
   	private SymTab symTab;
 	private ClassNode classEnv; 	// Aponta para a classe atualmente em uso em symTab
-	//private MethodNode methodEnv; 	// Aponta para a metodo atualmente em uso em symTab
+	private MethodNode methodEnv; 	// Aponta para a metodo atualmente em uso em symTab
 
 
 	public Codegen(){
@@ -243,7 +244,10 @@ public class Codegen extends VisitorAdapter{
 	}
 	
 	public LlvmValue visit(ClassDeclSimple n){
+		// pega o nome atual da classe na tabela de símbolos
 		classEnv = symTab.classes.get(n.name.s);
+		
+		// declara a estrutura da classe
 		assembler.add(classEnv.getClassDeclaration());
 		
 		// Percorre n.methodList visitando cada método
@@ -255,8 +259,52 @@ public class Codegen extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(ClassDeclExtends n){return null;}
-	public LlvmValue visit(VarDecl n){return null;}
-	public LlvmValue visit(MethodDecl n){return null;}
+	public LlvmValue visit(VarDecl n){
+		LlvmValue value = n.type.accept(this);
+		LlvmNamedValue v = new LlvmNamedValue("%"+n.name.s, value.type);
+		if (methodEnv != null) {
+			assembler.add(new LlvmAlloca(v, value.type, new LinkedList<LlvmValue>()));
+		}
+		
+		return v;
+	}
+	public LlvmValue visit(MethodDecl n){
+		methodEnv = classEnv.methods.get(n.name.s);
+		
+		// define o método
+		assembler.add(methodEnv.getFunctionDefinition(classEnv));
+		
+		// label
+		assembler.add(new LlvmLabel(new LlvmLabelValue("entry")));
+		
+		// aloca os Formals
+		for (LlvmValue v : methodEnv.getFormalList()) {
+			if (!v.toString().equals("%this")) {
+				LlvmRegister R1 = new LlvmRegister(v.toString() + "_tmp", new LlvmPointer(v.type));
+				assembler.add(new LlvmAlloca(R1, LlvmPrimitiveType.I32, new LinkedList<LlvmValue>()));
+				assembler.add(new LlvmStore(v, R1));
+			}
+		}
+		
+		// aloca as variáveis
+		for (util.List<VarDecl> vars = n.locals; vars != null; vars = vars.tail) {
+			vars.head.accept(this);
+		}
+		
+		// accept nas expressões
+		for (util.List<Statement> exprList = n.body; exprList != null; exprList = exprList.tail) {
+			exprList.head.accept(this);
+		}
+		
+		// retorno do método
+		LlvmValue returnValue = n.returnExp.accept(this);
+		assembler.add(new LlvmRet(returnValue));
+		assembler.add(new LlvmCloseDefinition());
+		
+		// Limpa a tabela de símbolos temporária
+		methodEnv = null;
+		return null;
+	}
 	public LlvmValue visit(Formal n){return null;}
 	public LlvmValue visit(IntArrayType n){return null;}
 	public LlvmValue visit(BooleanType n){return null;}
@@ -342,8 +390,28 @@ public LlvmValue visit(ClassDeclSimple n){
 		LlvmNamedValue v = new LlvmNamedValue("%"+n.name.s, value.type);
 		return v;
 	}
-	public LlvmValue visit(Formal n){return null;}
-	public LlvmValue visit(MethodDecl n){return null;}
+	public LlvmValue visit(Formal n){
+		return new LlvmNamedValue("%" + n.name.s, n.type.accept(this).type);
+	}
+	public LlvmValue visit(MethodDecl n){
+		LlvmType returnType = n.returnType.accept(this).type;
+		List<LlvmValue> args = new LinkedList<LlvmValue>();
+		List<LlvmValue> vars = new LinkedList<LlvmValue>();
+		args.add(classEnv.getClassPointer());
+		
+		for (util.List<Formal> formals = n.formals; formals != null; formals = formals.tail) {
+			LlvmValue formal = formals.head.accept(this);
+			args.add(formal);
+		}
+	
+		for (util.List<VarDecl> varList = n.locals; varList != null; varList = varList.tail) {
+			LlvmValue var = varList.head.accept(this);
+			vars.add(var);
+		}
+		
+		classEnv.addMethod(new MethodNode(n.name.s, args, vars, returnType));
+		return null;
+	}
 	public LlvmValue visit(IdentifierType n){return null;}
 	public LlvmValue visit(IntArrayType n){
 		return new LlvmNamedValue("int[]", new LlvmPointer(LlvmPrimitiveType.I32));
@@ -373,6 +441,10 @@ class ClassNode extends LlvmType {
 	}
 	
 	// getters 
+	public String getName() {
+		return name;
+	}
+	
 	public LlvmClassType getClassType() {
 		return new LlvmClassType(this.name);
 	}
@@ -392,9 +464,68 @@ class ClassNode extends LlvmType {
 			}
 		};
 	}
+	
+	public void addMethod(MethodNode methodNode) {
+		methodList.add(methodNode);
+		methods.put(methodNode.getName(), methodNode);
+	}
 }
 
-class MethodNode {
+class MethodNode extends LlvmType {
+	private String name;
+	private List<LlvmValue> formalList;
+	private List<LlvmValue> varList;
+	Map<String, LlvmValue> formals;
+	Map<String, LlvmValue> vars;
+	LlvmType returnType;
+	
+	public MethodNode(String name, List<LlvmValue> formalList,
+			List<LlvmValue> varList, LlvmType returnType) {
+		super();
+		this.name = name;
+		this.formalList = formalList;
+		this.varList = varList;
+		this.returnType = returnType;
+		
+		this.vars = new HashMap<String, LlvmValue>();
+		for (LlvmValue v : varList) {
+			this.vars.put(v.toString(),v);
+		}
+		
+		this.formals = new HashMap<String, LlvmValue>();
+		for (LlvmValue f : formalList) {
+			this.formals.put(f.toString(), f);
+		}
+	}
+	
+	public String getName() {
+		return this.name;
+	}
+	
+	public List<LlvmValue> getFormalList() {
+		return this.formalList;
+	}
+	
+	public List<LlvmValue> getVarList() {
+		return this.varList;
+	}
+	
+	public boolean hasFormal(String formal) {
+		return this.formals.containsKey(formal);
+	}
+	
+	public LlvmInstruction getFunctionDefinition(ClassNode classEnv) {
+		return new LlvmDefine(getFunctionName(classEnv), returnType, formalList);
+	}
+	
+	public String getFunctionName(ClassNode classEnv) {
+		return "@__" + this.name + "_" + classEnv.getName();
+	}
+	
+	public boolean hasLocalVariable(String var) {
+		return this.vars.containsKey(var);
+	}
+	
 }
 
 
