@@ -308,7 +308,9 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(Formal n){return null;}
 	public LlvmValue visit(IntArrayType n){return null;}
 	public LlvmValue visit(BooleanType n){return null;}
-	public LlvmValue visit(IntegerType n){return null;}
+	public LlvmValue visit(IntegerType n){
+		return new LlvmNamedValue("int", LlvmPrimitiveType.I32);
+	}
 	public LlvmValue visit(IdentifierType n){return null;}
 	public LlvmValue visit(Block n){return null;}
 	public LlvmValue visit(If n){return null;}
