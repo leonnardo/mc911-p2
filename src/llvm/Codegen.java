@@ -42,6 +42,7 @@ import java.util.ListResourceBundle;
 import java.util.Map;
 
 import llvmast.LlvmAlloca;
+import llvmast.LlvmAnd;
 import llvmast.LlvmArray;
 import llvmast.LlvmBool;
 import llvmast.LlvmCall;
@@ -326,18 +327,24 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(While n){return null;}
 	public LlvmValue visit(Assign n){return null;}
 	public LlvmValue visit(ArrayAssign n){return null;}
-	public LlvmValue visit(And n){ return null; }
+	public LlvmValue visit(And n){
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I1);
+		assembler.add(new LlvmAnd(lhs, LlvmPrimitiveType.I1, v1, v2));
+		return lhs;
+	}
 	public LlvmValue visit(LessThan n){
 		LlvmValue v1 = n.lhs.accept(this);
 		LlvmValue v2 = n.rhs.accept(this);
-		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I1);
 		assembler.add(new LlvmIcmp(lhs, LlvmIcmp.SLT, LlvmPrimitiveType.I32, v1, v2));
 		return lhs;
 	}
 	public LlvmValue visit(Equal n){
 		LlvmValue v1 = n.lhs.accept(this);
 		LlvmValue v2 = n.rhs.accept(this);
-		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I1);
 		assembler.add(new LlvmIcmp(lhs, LlvmIcmp.EQ, LlvmPrimitiveType.I32, v1, v2));
 		return lhs;
 	}
