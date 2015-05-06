@@ -45,6 +45,7 @@ import llvmast.LlvmAlloca;
 import llvmast.LlvmAnd;
 import llvmast.LlvmArray;
 import llvmast.LlvmBool;
+import llvmast.LlvmBranch;
 import llvmast.LlvmCall;
 import llvmast.LlvmClassType;
 import llvmast.LlvmCloseDefinition;
@@ -216,13 +217,12 @@ public class Codegen extends VisitorAdapter{
 		return null;
 	}
 	
-	public LlvmValue visit(IntegerLiteral n){
-		return new LlvmIntegerLiteral(n.value);
-	};
 	
 	// Todos os visit's que devem ser implementados	
+	public LlvmValue visit(IntegerLiteral n){
+		return new LlvmIntegerLiteral(n.value);
+	}
 	
-	// operações matemáticcas
 	public LlvmValue visit(Plus n){
 		LlvmValue v1 = n.lhs.accept(this);
 		LlvmValue v2 = n.rhs.accept(this);
@@ -261,8 +261,10 @@ public class Codegen extends VisitorAdapter{
 			
 		return null;
 	}
-
+	
+	// TODO
 	public LlvmValue visit(ClassDeclExtends n){return null;}
+	
 	public LlvmValue visit(VarDecl n){
 		LlvmValue value = n.type.accept(this);
 		LlvmNamedValue v = new LlvmNamedValue("%"+n.name.s, value.type);
@@ -272,6 +274,7 @@ public class Codegen extends VisitorAdapter{
 		
 		return v;
 	}
+	
 	public LlvmValue visit(MethodDecl n){
 		methodEnv = classEnv.methods.get(n.name.s);
 		
@@ -322,9 +325,48 @@ public class Codegen extends VisitorAdapter{
 		return new LlvmNamedValue("int", LlvmPrimitiveType.I32);
 	}
 	public LlvmValue visit(IdentifierType n){return null;}
-	public LlvmValue visit(Block n){return null;}
-	public LlvmValue visit(If n){return null;}
-	public LlvmValue visit(While n){return null;}
+	
+	// Block contém uma lista de statements
+	public LlvmValue visit(Block n){
+		for (util.List<Statement> s = n.body; s != null; s = s.tail) {
+			s.head.accept(this);
+		}
+		return null;
+	}
+	
+	public LlvmValue visit(If n){
+		LlvmValue cmp = n.condition.accept(this);
+		LlvmLabelValue ifLabel = new LlvmLabelValue("ifLabel"+n.line);
+		LlvmLabelValue elseLabel = new LlvmLabelValue("elseLabel"+n.line);
+		LlvmLabelValue endLabel = new LlvmLabelValue("endLabel"+n.line);
+		
+		assembler.add(new LlvmBranch(cmp, ifLabel, elseLabel));
+		assembler.add(new LlvmLabel(ifLabel));
+		n.thenClause.accept(this);
+		assembler.add(new LlvmBranch(endLabel));
+		
+		assembler.add(new LlvmLabel(elseLabel));
+		if (n.elseClause != null) {
+			n.elseClause.accept(this);
+		}
+		assembler.add(new LlvmLabel(endLabel));
+		return cmp;
+	}
+	
+	public LlvmValue visit(While n) {
+		LlvmValue cond = n.condition.accept(this);
+		LlvmLabelValue condLabel = new LlvmLabelValue("cond"+n.line);
+		LlvmLabelValue endWhile = new LlvmLabelValue("endWhile"+n.line);
+		LlvmLabelValue startBody = new LlvmLabelValue("startBody"+n.line);
+		assembler.add(new LlvmLabel(condLabel));
+		assembler.add(new LlvmBranch(cond, startBody,endWhile));
+		assembler.add(new LlvmLabel(startBody));
+		n.body.accept(this);
+		assembler.add(new LlvmBranch(condLabel));
+		assembler.add(new LlvmLabel(endWhile));
+		return cond;
+	}
+	
 	public LlvmValue visit(Assign n){return null;}
 	public LlvmValue visit(ArrayAssign n){return null;}
 	public LlvmValue visit(And n){
@@ -348,8 +390,11 @@ public class Codegen extends VisitorAdapter{
 		assembler.add(new LlvmIcmp(lhs, LlvmIcmp.EQ, LlvmPrimitiveType.I32, v1, v2));
 		return lhs;
 	}
+	// Procura elemento no array 
 	public LlvmValue visit(ArrayLookup n){return null;}
+	// Retorna o tamanho do array
 	public LlvmValue visit(ArrayLength n){return null;}
+	// Chamada de método
 	public LlvmValue visit(Call n){return null;}
 	public LlvmValue visit(True n){
 		return new LlvmBool(LlvmBool.TRUE);
