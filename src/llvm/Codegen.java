@@ -38,10 +38,12 @@ package llvm;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.ListResourceBundle;
 import java.util.Map;
 
 import llvmast.LlvmAlloca;
 import llvmast.LlvmArray;
+import llvmast.LlvmBool;
 import llvmast.LlvmCall;
 import llvmast.LlvmClassType;
 import llvmast.LlvmCloseDefinition;
@@ -49,6 +51,7 @@ import llvmast.LlvmConstantDeclaration;
 import llvmast.LlvmDefine;
 import llvmast.LlvmExternalDeclaration;
 import llvmast.LlvmGetElementPointer;
+import llvmast.LlvmIcmp;
 import llvmast.LlvmInstruction;
 import llvmast.LlvmIntegerLiteral;
 import llvmast.LlvmLabel;
@@ -281,7 +284,7 @@ public class Codegen extends VisitorAdapter{
 		for (LlvmValue v : methodEnv.getFormalList()) {
 			if (!v.toString().equals("%this")) {
 				LlvmRegister R1 = new LlvmRegister(v.toString() + "_tmp", new LlvmPointer(v.type));
-				assembler.add(new LlvmAlloca(R1, LlvmPrimitiveType.I32, new LinkedList<LlvmValue>()));
+				assembler.add(new LlvmAlloca(R1, v.type, new LinkedList<LlvmValue>()));
 				assembler.add(new LlvmStore(v, R1));
 			}
 		}
@@ -305,9 +308,15 @@ public class Codegen extends VisitorAdapter{
 		methodEnv = null;
 		return null;
 	}
-	public LlvmValue visit(Formal n){return null;}
-	public LlvmValue visit(IntArrayType n){return null;}
-	public LlvmValue visit(BooleanType n){return null;}
+	public LlvmValue visit(Formal n){
+		return new LlvmNamedValue("%" +  n.name.s, n.type.accept(this).type);
+	}
+	public LlvmValue visit(IntArrayType n){
+		return new LlvmNamedValue("int[]", new LlvmPointer(LlvmPrimitiveType.I32));
+	}
+	public LlvmValue visit(BooleanType n){
+		return new LlvmNamedValue("boolean", LlvmPrimitiveType.I1);
+	}
 	public LlvmValue visit(IntegerType n){
 		return new LlvmNamedValue("int", LlvmPrimitiveType.I32);
 	}
@@ -317,20 +326,38 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(While n){return null;}
 	public LlvmValue visit(Assign n){return null;}
 	public LlvmValue visit(ArrayAssign n){return null;}
-	public LlvmValue visit(And n){return null;}
-	public LlvmValue visit(LessThan n){return null;}
-	public LlvmValue visit(Equal n){return null;}
+	public LlvmValue visit(And n){ return null; }
+	public LlvmValue visit(LessThan n){
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmIcmp(lhs, LlvmIcmp.SLT, LlvmPrimitiveType.I32, v1, v2));
+		return lhs;
+	}
+	public LlvmValue visit(Equal n){
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmIcmp(lhs, LlvmIcmp.EQ, LlvmPrimitiveType.I32, v1, v2));
+		return lhs;
+	}
 	public LlvmValue visit(ArrayLookup n){return null;}
 	public LlvmValue visit(ArrayLength n){return null;}
 	public LlvmValue visit(Call n){return null;}
-	public LlvmValue visit(True n){return null;}
-	public LlvmValue visit(False n){return null;}
+	public LlvmValue visit(True n){
+		return new LlvmBool(LlvmBool.TRUE);
+	}
+	public LlvmValue visit(False n){
+		return new LlvmBool(LlvmBool.FALSE);
+	}
 	public LlvmValue visit(IdentifierExp n){return null;}
 	public LlvmValue visit(This n){return null;}
 	public LlvmValue visit(NewArray n){return null;}
 	public LlvmValue visit(NewObject n){return null;}
 	public LlvmValue visit(Not n){return null;}
-	public LlvmValue visit(Identifier n){return null;}
+	public LlvmValue visit(Identifier n){
+		return new LlvmNamedValue(n.s, LlvmPrimitiveType.I32);
+	}
 }
 
 
