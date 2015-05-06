@@ -8,8 +8,8 @@ public class LlvmBool extends LlvmValue{
     
     public String toString(){
     	switch (this.val){
-    	case FALSE : {return "false";}
-    	case TRUE  : {return "true";}
+    	case FALSE : {return "0";}
+    	case TRUE  : {return "1";}
     		
     	}
 		return null;

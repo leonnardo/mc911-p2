@@ -9,6 +9,6 @@ public class LlvmStore extends LlvmInstruction{
     }
     
     public String toString(){
-	return "  store " + content.type + " " + content + ", " + address.type + " " + address;
+    	return "  store " + content.type + " " + content + ", " + address.type + " " + address;
     }
 }

@@ -38,7 +38,6 @@ package llvm;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.ListResourceBundle;
 import java.util.Map;
 
 import llvmast.LlvmAlloca;
@@ -59,6 +58,7 @@ import llvmast.LlvmIntegerLiteral;
 import llvmast.LlvmLabel;
 import llvmast.LlvmLabelValue;
 import llvmast.LlvmLoad;
+import llvmast.LlvmMalloc;
 import llvmast.LlvmMinus;
 import llvmast.LlvmNamedValue;
 import llvmast.LlvmPlus;
@@ -287,7 +287,7 @@ public class Codegen extends VisitorAdapter{
 		// aloca os Formals
 		for (LlvmValue v : methodEnv.getFormalList()) {
 			if (!v.toString().equals("%this")) {
-				LlvmRegister R1 = new LlvmRegister(v.toString() + "_tmp", new LlvmPointer(v.type));
+				LlvmRegister R1 = new LlvmRegister(v.toString() + "_addr", new LlvmPointer(v.type));
 				assembler.add(new LlvmAlloca(R1, v.type, new LinkedList<LlvmValue>()));
 				assembler.add(new LlvmStore(v, R1));
 			}
@@ -324,7 +324,9 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(IntegerType n){
 		return new LlvmNamedValue("int", LlvmPrimitiveType.I32);
 	}
-	public LlvmValue visit(IdentifierType n){return null;}
+	public LlvmValue visit(IdentifierType n){
+		return new LlvmNamedValue(n.name, symTab.classes.get(n.name).getClassPointer());
+	}
 	
 	// Block contém uma lista de statements
 	public LlvmValue visit(Block n){
@@ -367,7 +369,9 @@ public class Codegen extends VisitorAdapter{
 		return cond;
 	}
 	
-	public LlvmValue visit(Assign n){return null;}
+	public LlvmValue visit(Assign n){		
+		return null;
+	}
 	public LlvmValue visit(ArrayAssign n){return null;}
 	public LlvmValue visit(And n){
 		LlvmValue v1 = n.lhs.accept(this);
@@ -404,8 +408,19 @@ public class Codegen extends VisitorAdapter{
 	}
 	public LlvmValue visit(IdentifierExp n){return null;}
 	public LlvmValue visit(This n){return null;}
-	public LlvmValue visit(NewArray n){return null;}
-	public LlvmValue visit(NewObject n){return null;}
+	public LlvmValue visit(NewArray n){
+		LlvmValue size = n.size.accept(this);
+		int size_int = Integer.valueOf(size.toString());
+		LlvmValue lhs = new LlvmRegister(new LlvmArray(size_int, LlvmPrimitiveType.I32));
+		assembler.add(new LlvmMalloc(lhs, LlvmPrimitiveType.I32, size));
+		return lhs;
+	}
+	public LlvmValue visit(NewObject n){
+		ClassNode clazz = symTab.classes.get(n.className.s);
+		LlvmRegister lhs = new LlvmRegister(clazz.getClassPointer());
+		assembler.add(new LlvmMalloc(lhs, clazz.getStructure(), clazz.getClassType().toString()));
+		return lhs;
+	}
 	public LlvmValue visit(Not n){return null;}
 	public LlvmValue visit(Identifier n){
 		return new LlvmNamedValue(n.s, LlvmPrimitiveType.I32);
@@ -424,83 +439,97 @@ class SymTab extends VisitorAdapter{
     public Map<String, ClassNode> classes;     
     private ClassNode classEnv;    //aponta para a classe em uso
 
-    public LlvmValue FillTabSymbol(Program n){
-	n.accept(this);
-	return null;
-}
-public LlvmValue visit(Program n){
-	n.mainClass.accept(this);
-
-	for (util.List<ClassDecl> c = n.classList; c != null; c = c.tail)
-		c.head.accept(this);
-
-	return null;
-}
-
-public LlvmValue visit(MainClass n){
-	classes = new HashMap<String, ClassNode>();
-	classes.put(n.className.s, new ClassNode(n.className.s, null, null));
-	return null;
-}
-
-public LlvmValue visit(ClassDeclSimple n){
-	// percorre a lista de variáveis para ver os tipos 
-	List<LlvmType> typeList = new LinkedList<LlvmType>();
-	List<LlvmValue> varList = new LinkedList<LlvmValue>();
-	LlvmValue val;
-	for (util.List<VarDecl> v = n.varList; v !=null; v = v.tail) { 
-		val = v.head.accept(this);
-		typeList.add(val.type);
-		varList.add(val);
+	public LlvmValue FillTabSymbol(Program n) {
+		n.accept(this);
+		return null;
 	}
-	
-	classEnv = new ClassNode(n.name.s, new LlvmStructure(typeList), varList);
-	classes.put(n.name.s, classEnv);
-	
-	// Percorre n.methodList visitando cada método
-	for (util.List<MethodDecl> methodList = n.methodList; methodList != null; methodList = methodList.tail) {
-		methodList.head.accept(this);
-	}
-		
-	return null;
-}
 
-	public LlvmValue visit(ClassDeclExtends n){return null;}
-	public LlvmValue visit(VarDecl n){
+	public LlvmValue visit(Program n) {
+		n.mainClass.accept(this);
+
+		for (util.List<ClassDecl> c = n.classList; c != null; c = c.tail)
+			c.head.accept(this);
+
+		return null;
+	}
+
+	public LlvmValue visit(MainClass n) {
+		classes = new HashMap<String, ClassNode>();
+		classes.put(n.className.s, new ClassNode(n.className.s, null, null));
+		return null;
+	}
+
+	public LlvmValue visit(ClassDeclSimple n) {
+		// percorre a lista de variáveis para ver os tipos
+		List<LlvmType> typeList = new LinkedList<LlvmType>();
+		List<LlvmValue> varList = new LinkedList<LlvmValue>();
+		LlvmValue val;
+		for (util.List<VarDecl> v = n.varList; v != null; v = v.tail) {
+			val = v.head.accept(this);
+			typeList.add(val.type);
+			varList.add(val);
+		}
+
+		classEnv = new ClassNode(n.name.s, new LlvmStructure(typeList), varList);
+		classes.put(n.name.s, classEnv);
+
+		// Percorre n.methodList visitando cada método
+		for (util.List<MethodDecl> methodList = n.methodList; methodList != null; methodList = methodList.tail) {
+			methodList.head.accept(this);
+		}
+
+		return null;
+	}
+
+	public LlvmValue visit(ClassDeclExtends n) {
+		return null;
+	}
+
+	public LlvmValue visit(VarDecl n) {
 		LlvmValue value = n.type.accept(this);
-		LlvmNamedValue v = new LlvmNamedValue("%"+n.name.s, value.type);
+		LlvmNamedValue v = new LlvmNamedValue("%" + n.name.s, value.type);
 		return v;
 	}
-	public LlvmValue visit(Formal n){
+
+	public LlvmValue visit(Formal n) {
 		return new LlvmNamedValue("%" + n.name.s, n.type.accept(this).type);
 	}
-	public LlvmValue visit(MethodDecl n){
+
+	public LlvmValue visit(MethodDecl n) {
 		LlvmType returnType = n.returnType.accept(this).type;
 		List<LlvmValue> args = new LinkedList<LlvmValue>();
 		List<LlvmValue> vars = new LinkedList<LlvmValue>();
-		args.add(classEnv.getClassPointer());
-		
+		args.add(classEnv.getClassReference());
+
 		for (util.List<Formal> formals = n.formals; formals != null; formals = formals.tail) {
 			LlvmValue formal = formals.head.accept(this);
 			args.add(formal);
 		}
-	
+
 		for (util.List<VarDecl> varList = n.locals; varList != null; varList = varList.tail) {
 			LlvmValue var = varList.head.accept(this);
 			vars.add(var);
 		}
-		
+
 		classEnv.addMethod(new MethodNode(n.name.s, args, vars, returnType));
 		return null;
 	}
-	public LlvmValue visit(IdentifierType n){return null;}
-	public LlvmValue visit(IntArrayType n){
-		return new LlvmNamedValue("int[]", new LlvmPointer(LlvmPrimitiveType.I32));
+
+	public LlvmValue visit(IdentifierType n) {
+		return new LlvmNamedValue(n.name, new LlvmPointer(new LlvmClassType(
+				n.name)));
 	}
-	public LlvmValue visit(BooleanType n){
+
+	public LlvmValue visit(IntArrayType n) {
+		return new LlvmNamedValue("int[]", new LlvmPointer(
+				LlvmPrimitiveType.I32));
+	}
+
+	public LlvmValue visit(BooleanType n) {
 		return new LlvmNamedValue("boolean", LlvmPrimitiveType.I1);
 	}
-	public LlvmValue visit(IntegerType n){
+
+	public LlvmValue visit(IntegerType n) {
 		return new LlvmNamedValue("int", LlvmPrimitiveType.I32);
 	}
 }
@@ -511,6 +540,7 @@ class ClassNode extends LlvmType {
 	public List<LlvmValue> varList;
 	public List<MethodNode> methodList;
 	public Map<String, MethodNode> methods;
+	public Map<String, LlvmValue> vars;
 	
 	// constructor
 	ClassNode (String nameClass, LlvmStructure classType, List<LlvmValue> varList) {
@@ -519,6 +549,13 @@ class ClassNode extends LlvmType {
 		this.varList = varList;
 		this.methodList = new LinkedList<MethodNode>();
 		this.methods = new HashMap<String, MethodNode>();
+		this.vars = new HashMap<String, LlvmValue>();
+		
+		if (varList != null) {
+			for (LlvmValue val : varList) {
+				vars.put(val.toString(), val);
+			}
+		}
 	}
 	
 	// getters 
@@ -530,7 +567,11 @@ class ClassNode extends LlvmType {
 		return new LlvmClassType(this.name);
 	}
 	
-	public LlvmNamedValue getClassPointer() {
+	public LlvmPointer getClassPointer() {
+		return new LlvmPointer(new LlvmClassType(this.name));
+	}
+	
+	public LlvmNamedValue getClassReference() {
 		return new LlvmNamedValue("%this", new LlvmPointer(getClassType()));
 	}
 	
