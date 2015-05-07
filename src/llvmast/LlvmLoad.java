@@ -9,6 +9,6 @@ public class LlvmLoad extends LlvmInstruction{
     }
     
     public String toString(){
-	return "  " + lhs + " = load " + address.type + " " + address;
+	return "  " + lhs + " = load " + address.type + ", " + address;
     }
 }

@@ -6,3 +6,6 @@ bin/
 *.class
 .externalToolBuilders/
 teste.s
+test/
+.idea/
+projeto2-mc911.iml

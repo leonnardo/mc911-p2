@@ -370,6 +370,24 @@ public class Codegen extends VisitorAdapter{
 	}
 	
 	public LlvmValue visit(Assign n){		
+		LlvmValue var = n.var.accept(this);
+		LlvmValue exp = n.exp.accept(this);
+		// parametro método (formal)
+		if (methodEnv != null && methodEnv.hasFormal("%"+n.var.s)) {
+			LlvmValue val = methodEnv.formals.get("%"+n.var.s);
+			LlvmRegister R1 = new LlvmRegister("%"+n.var.s + "_addr", new LlvmPointer(val.type));
+			assembler.add(new LlvmStore(exp, R1));
+		}
+		
+		// local de método
+		if (methodEnv != null) {
+			LlvmRegister R2  = new LlvmRegister("%"+n.var.s, new LlvmPointer(exp.type));
+			LlvmAlloca aux = new LlvmAlloca(R2, exp.type, new LinkedList<LlvmValue>());
+			assembler.add(new LlvmStore(exp, R2));
+			
+		}
+		// local da classe
+		// local da superclasse
 		return null;
 	}
 	public LlvmValue visit(ArrayAssign n){return null;}
@@ -406,7 +424,36 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(False n){
 		return new LlvmBool(LlvmBool.FALSE);
 	}
-	public LlvmValue visit(IdentifierExp n){return null;}
+	public LlvmValue visit(IdentifierExp n){
+		LlvmRegister r = new LlvmRegister(n.type.accept(this).type);
+		String name = "%"+n.name.s;
+		if (classEnv != null) {
+			// verifica se a variável da expressão é local do método
+			if (methodEnv.vars.containsKey(name)) {
+				LlvmValue local = methodEnv.vars.get(name);
+				LlvmNamedValue value = new LlvmNamedValue(new LlvmPointer(local.type) + " "+ local.toString(), r.type);
+				assembler.add(new LlvmLoad(r, value));
+				return r;
+			}
+
+			// verifica se a variável da expressão é parâmetro do método
+			else if (methodEnv.formals.containsKey(name)) {
+				LlvmValue local = methodEnv.formals.get(name);
+				LlvmNamedValue value = new LlvmNamedValue(new LlvmPointer(local.type)+" "+local.toString()+"_addr", r.type);
+				assembler.add(new LlvmLoad(r, value));
+				return r;
+			}
+
+			// verifica se a variável é da classe
+			else if (classEnv.vars.containsKey(name)) {
+				LlvmValue local = classEnv.vars.get(name);
+				LlvmNamedValue value = new LlvmNamedValue(new LlvmPointer(local.type)+" "+local.toString(), r.type);
+				assembler.add(new LlvmLoad(r, value));
+			}
+		}
+		return null;
+		
+	}
 	public LlvmValue visit(This n){return null;}
 	public LlvmValue visit(NewArray n){
 		LlvmValue size = n.size.accept(this);
