@@ -380,7 +380,7 @@ public class Codegen extends VisitorAdapter{
 		}
 		
 		// local de método
-		if (methodEnv != null) {
+		else if (methodEnv != null) {
 			LlvmRegister R2  = new LlvmRegister("%"+n.var.s, new LlvmPointer(exp.type));
 			LlvmAlloca aux = new LlvmAlloca(R2, exp.type, new LinkedList<LlvmValue>());
 			assembler.add(new LlvmStore(exp, R2));
@@ -412,18 +412,23 @@ public class Codegen extends VisitorAdapter{
 		assembler.add(new LlvmIcmp(lhs, LlvmIcmp.EQ, LlvmPrimitiveType.I32, v1, v2));
 		return lhs;
 	}
-	// Procura elemento no array 
+
+	// Procura elemento no array
 	public LlvmValue visit(ArrayLookup n){return null;}
 	// Retorna o tamanho do array
 	public LlvmValue visit(ArrayLength n){return null;}
+
 	// Chamada de método
 	public LlvmValue visit(Call n){return null;}
+
 	public LlvmValue visit(True n){
 		return new LlvmBool(LlvmBool.TRUE);
 	}
+
 	public LlvmValue visit(False n){
 		return new LlvmBool(LlvmBool.FALSE);
 	}
+
 	public LlvmValue visit(IdentifierExp n){
 		LlvmRegister r = new LlvmRegister(n.type.accept(this).type);
 		String name = "%"+n.name.s;
@@ -450,11 +455,15 @@ public class Codegen extends VisitorAdapter{
 				LlvmNamedValue value = new LlvmNamedValue(new LlvmPointer(local.type)+" "+local.toString(), r.type);
 				assembler.add(new LlvmLoad(r, value));
 			}
+
+			// TODO: verifica se a variável é de alguma superclasse
 		}
 		return null;
 		
 	}
-	public LlvmValue visit(This n){return null;}
+	public LlvmValue visit(This n){
+		return new LlvmNamedValue("%this", new LlvmPointer(new LlvmClassType(classEnv.getName())));
+	}
 	public LlvmValue visit(NewArray n){
 		LlvmValue size = n.size.accept(this);
 		int size_int = Integer.valueOf(size.toString());
